@@ -1,16 +1,451 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
 
-  <title><![CDATA[My Octopress Blog]]></title>
-  <link href="http://xhostplus.github.io/atom.xml" rel="self"/>
-  <link href="http://xhostplus.github.io/"/>
-  <updated>2014-09-09T17:48:03-04:00</updated>
-  <id>http://xhostplus.github.io/</id>
+  <title><![CDATA[xhost +]]></title>
+  <link href="http://xhostpl.us/atom.xml" rel="self"/>
+  <link href="http://xhostpl.us/"/>
+  <updated>2014-10-08T12:51:47-04:00</updated>
+  <id>http://xhostpl.us/</id>
   <author>
-    <name><![CDATA[Your Name]]></name>
+    <name><![CDATA[Bill Nelson]]></name>
     
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[Attacking the One Time Pad]]></title>
+    <link href="http://xhostpl.us/blog/2014/10/01/attacking-the-one-time-pad.markdown/"/>
+    <updated>2014-10-01T15:29:00-04:00</updated>
+    <id>http://xhostpl.us/blog/2014/10/01/attacking-the-one-time-pad.markdown</id>
+    <content type="html"><![CDATA[**TL;DR;**
+Using a One Time Pad is secure, ([perfectly secure actually](http://www.pro-technix.com/information/crypto/pages/vernam_base.html)), but you have to use the key _once and only once_.  
+
+If the key is used again, also called a Two Time Pad, you can gather information on the messages sent.  This concept was used to crack [The Verona Project](http://en.wikipedia.org/wiki/Venona_project#Decryption), MS-CHAP in Windows NT, and the wireless protocol [WEP](http://en.wikipedia.org/wiki/Wired_Equivalent_Privacy#Flaws).
+
+In this somewhat lengthy blogpost, I will demonstrate the insecurity of a Two Time Pad.  You will just need an understanding of XOR.
+
+<!-- more -->
+
+## Overview of the One Time Pad
+
+The mechanics of the OTP are very straight forward.  You have a message _m_ of a certain length and a secret key _k_ of the same length.  To encrypt using the OTP: XOR _m_ and _k_ to get the resulting ciphertext _c_.  To decrypt: XOR _k_ and _c_ to get the message back.  Witness the power of XOR!
+
+For example:
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>ENCRYPT                  DECRYPT                  XOR Truth Table
+</span><span class='line'>m:  0 1 1 0 1 1 1        k:  1 0 1 1 0 1 0        a | b | a XOR b
+</span><span class='line'>k:  1 0 1 1 0 1 0        c:  1 1 0 1 1 0 1        ---------------
+</span><span class='line'>-----------------        -----------------        0 | 0 |   0
+</span><span class='line'>c:  1 1 0 1 1 0 1        m:  0 1 1 0 1 1 1        0 | 1 |   1
+</span><span class='line'>                                                  1 | 0 |   1
+</span><span class='line'>                                                  1 | 1 |   0</span></code></pre></td></tr></table></div></figure>
+
+Because nothing is perfectly perfect, there are some drawbacks to using the OTP in the real world:
+
+1. It requires a key length as large as the message.
+   If you wanted to encrypt the contents of a 1000 page book, you would also need another 1000 page book that represents the key.
++ The security of the OTP is only as secure as the key exchange.
+   How does one send the key from Alice to Bob so that no one can intercept it?
++ Every key must be random, unpredictable and unique, which is a non-trivial software requirement.
+
+## The Two Time Pad is Insecure
+
+A Two Time Pad is when the key _k_ is used more than once.  If an eavesdropper gets a hold of these ciphertexts, information can be obtained.  Take these two ciphertext, _c1_ and _c2_.  Both encrypt different messages, but use the same key _k_.
+
+_c1_ = _m1_ xor _k_  
+_c2_ = _m2_ xor _k_
+
+If the eavesdropper get these two ciphertext and XORs them together the key _k_ drops out (_a_ xor _a_ = 0), the result is:
+
+_c1_ xor _c2_ = _m1_ xor _m2_
+
+What is left if the difference between the two messages.  This can easily be shows with images instead of ones and zeroes.  Here is a screenshot of [ImageXOR](https://github.com/xhostplus/ImageXOR) program I wrote:
+![ImageXOR_screenshot](/assets/ImageXOR_screenshot.png)
+
+From this screenshot you can see both Message 1 and Message 2.  Both are encrypted using the same Key.  Both ciphertexts are shown, along with the difference between the two messages.  You can clearly see that the difference image contains information from both Message 1 and Message 2.  As an eavesdropper, we have obtained the information from both Messages.
+
+Like I stated before, this is easily seen with images, the human brain can see patterns and images easily and we can pick out the images even though they are superimposed.  As a computer, this is a fairly difficult task.  How can we implement this on a computer to actually get the message text?
+
+### Decrypting the Secret Message using the Two Time Pad
+
+Luckily, the English language has enough redundancy that information can be obtained from a series of Two Time Pad ciphertexts.  More specifically, if we look at the [ASCII Table](http://www.asciitable.com/) we can see that if we XOR a lowercase letter with a SPACE, we get the uppercase version of that same letter.  The same holds true for an upper case letter.
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>LETTER   HEX    BINARY
+</span><span class='line'>A:       0x41   0100 0001
+</span><span class='line'>Space:   0x20   0010 0000    XOR
+</span><span class='line'>-------------------------
+</span><span class='line'>a        0x61   0110 0001</span></code></pre></td></tr></table></div></figure>
+
+Using the above fact, we can take a few Two Time Pad ciphertexts and try to figure out what the secret messages are.  In the following example, this [secret message](/downloads/OTP/secret.txt) needs to be decrypted.  We are given [ten other ciphertexts](/downloads/OTP/ciphertexts.txt) that were encrypted using the same key _k_.
+
+Compiling and running [this code](https://github.com/xhostplus/OneTimePad/tree/master/OTPAttack) against the ciphertexts will result in this output:
+
+<figure class='code'><figcaption><span>Partially decoded ciphertexts </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>..E............MG.........._..I...A.......M..p........R........_..Y...........O..E.
+</span><span class='line'>..E.........H...G...........U...G..........E...D..........E...._..._...E....._.....
+</span><span class='line'>..E......Y...S..........H.......K_...N..............V.._.........E...O......N..N...
+</span><span class='line'>.........._...S....I....H....S..G..........E...D..........._..E..........T......C..
+</span><span class='line'>......C.....E.S..._....w..._..I.......E.........._......U.........U_...E...A....C..
+</span><span class='line'>..E....R........G.......H.........A.o....I...........E...S..........M..E.T..._.....
+</span><span class='line'>.H...E...._...S..E...._._.N...I.G.._....t....p....N.....U.._..E............A....C..
+</span><span class='line'>.H........_.........S......_...N..........M...........R......H......M....T.......E.
+</span><span class='line'>..._.........S........_..E..........o......E.......E....U.E............._..........
+</span><span class='line'>.....E..E..M...A...I....H......N..A...._...._...........U...T.......M..E..O.N......</span></code></pre></td></tr></table></div></figure>
+
+The code will compare each ciphertext message with every other one trying to determine where the spaces are.  Using the position in the ciphertext we believe to be a space, XOR that with the same position in the secret message.  Using this algorithm, we get the above output.  If we scan each column we can see some repeated characters, some are special characters, the . are non-printable characters and the - is believed to be a space.  From this information, we can try to reconstruct the secret message:
+
+<figure class='code'><figcaption><span>Partially decoded message </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>he  ecre  message is  When using a One Time P d  never use the  ey mo e t an once</span></code></pre></td></tr></table></div></figure>
+
+Remember that the capital letters will convert to lower case, and the lowercase characters will convert to uppercase. 
+Filling in some of the missing letters we are almost done.
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>The secret message is  When using a One Time Pad  never use the key more than once</span></code></pre></td></tr></table></div></figure>
+
+There are a couple of missing characters in this message, after _is_, after _Pad_ and at the end, after _once_.  We need to try to determine what the rest of the secret message is.  One way would be to use the secret message and decode the ciphertexts in the file.  We know the secret message and ciphertext, from this we can determine the key and decode the other ciphertexts.
+
+_m_ xor _c_ = _k_
+
+Compiling and running [this code](https://github.com/xhostplus/OneTimePad/tree/master/OTPDecode) using the same ciphertexts file, we can decode the secret key _k_ and the ciphertexts.  Using the partially decoded message we get this output:
+
+<figure class='code'><figcaption><span>Decoded Key (so far) </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>589C983EA55EF78A1F62970699D3C62E92639AC20A762D7844531FE208926C602E049ED462955E81F7F68890C94EBF5BBD591DBBC64A330A9E52ECA6E45807137CA5E7BE3B4540323BC8C305168260C7DB7E</span></code></pre></td></tr></table></div></figure>
+
+<figure class='code'><figcaption><span>Partially deocded ciphertexts </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>In cryptography, encrcption is the process of enooding messages Or information in .
+</span><span class='line'>In symmetric-key schewes,[3] the encryption and hecryption keys Are the same. Thus.
+</span><span class='line'>In public-key encryptson schemes, the encryption,key is publisheD for anyone to us.
+</span><span class='line'>Encryption has long b.en used by militaries and kovernments to fAcilitate secret c.
+</span><span class='line'>TL;DR; Using a One Tiwe Pad is secure, (perfectlu secure actuallY), but you have t.
+</span><span class='line'>In this somewhat lengnhy blogpost, I will demonsxrate the insecuRity of a Two Time.
+</span><span class='line'>A Two Time Pad is whet the key k is used more thmn once. If an eAvesdropper gets a.
+</span><span class='line'>A publicly available jublic key encryption applioation called PrEtty Good Privacy .
+</span><span class='line'>For technical reasons6 an encryption scheme usua`ly uses a pseudO-random encryptio.
+</span><span class='line'>There is no way for tris person to know that the,message was altEred in it's encry.</span></code></pre></td></tr></table></div></figure>
+
+Looking at the decoded ciphertexts, there are some discreptencies which correspond to the missing characters in the partially decoded message.  In the first line of the decrypted ciphertexts, we can see that _encrcption_ should be _encryption_.  Here is how we can use the information so far to correct this and get the rest of the secret message:
+
+1. Determine what the corrected key value should be
+2. Adjust the current key with this corrected value
+3. Determine the new decrypted value we are looking for
+
+For the first discrepency, we are looking at the 22nd character in the files:
+
+<figure class='code'><figcaption><span>Values for reference </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>Partialy Decoded Key     = 589C983EA55EF78A1F62970699D3C62E92639AC20A|76|2D7844531F
+</span><span class='line'>Encoded Ciphertext       = 11F2B85DD72787FE7005E567E9BBBF02B206F4A178|15|5D0C2D3C71
+</span><span class='line'>Decoded Ciphertext       = I n   c r y p t o g r a p h y ,   e n c r |c |p t i o n
+</span><span class='line'>Partially Decoded Secret = T h e   s e c r e t   m e s s a g e   i s |  |  W h e n</span></code></pre></td></tr></table></div></figure>
+
+**_m_**   = The secret message value (The partially decoded message.  This will always be a SPACE in this example, since we are using a SPACE as a placeholder.)  
+**_c_**   = The encoded ciphertext value (from the file)  
+**_k_**   = The decrypted key value (after running the above program)  
+**_k&#8217;_**  = The correct key  
+**_k&#8221;_** = The adjusted key  
+**_m&#8217;_**  = The correct secret message value  
+**_m1_**  = The decoded ciphertext message value  
+**_m1&#8217;_** = The corrected decoded ciphertext message value  
+
+We know these values so let&#8217;s set them:
+
+**_m_**   = 0x20 (SPACE)  
+**_c_**   = 0x15  
+**_k_**   = 0x76  
+**_m1_**  = 0x63 (letter c)  
+**_m1&#8217;_** = 0x79 (letter y)  
+
+1. Determine the correct key value:  
+   We need to find the value of _k&#8217;_ that will give us the correct value, in this case the letter y:  
+   **_c_ xor _k&#8217;_ = _m1&#8217;_**  
+   Since XOR is commutative, we can re-write the equation to be:  
+   **_c_ xor _m1&#8217;_ = _k&#8217;_**
+
++ Because of the maleability of XOR, we can adjust the old key value using the new key value.  This will produce a key value that will decrypt the SPACE character into the correct character in the secret message:  
+   We have the correct key value, but we need to adjust it with the key value we already decrypted:  
+   **_k&#8217;_ xor _k_ = _k&#8221;_**
+
++ Decrypt the SPACE value using the new _k&#8220;_ value:  
+   Using this new _k&#8221;_ key, we can now compute the corrected letter for the secret message:  
+   **_k&#8221;_ xor _m_ = _m&#8217;_**
+
+
+Taking these equations and putting in the values we get the following:
+
+0x15 xor _k&#8217;_ = 0x79 (y)  
+0x15 xor 0x79 = _k&#8217;_ = 0x6C  
+0x6C xor 0x76 = 0x1A  
+0x1A xor 0x20(SPACE) = 0x3A (:)
+
+If you are still following&#8230; we just deciphered the missing character in the secret message (:), and found the correct key value for that character (0x62).  Wash, Rinse, Repeat.  Here is the entire secret message:
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>The secret message is: When using a stream cipher, never use the key more than once!</span></code></pre></td></tr></table></div></figure>]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Attacking the One Time Pad]]></title>
+    <link href="http://xhostpl.us/blog/2014/10/01/attacking-the-one-time-pad/"/>
+    <updated>2014-10-01T15:29:00-04:00</updated>
+    <id>http://xhostpl.us/blog/2014/10/01/attacking-the-one-time-pad</id>
+    <content type="html"><![CDATA[<p><strong>TL;DR;</strong>
+Using a One Time Pad is secure, (<a href="http://www.pro-technix.com/information/crypto/pages/vernam_base.html">perfectly secure actually</a>), but you have to use the key <em>once and only once</em>.</p>
+
+<p>If the key is used again, also called a Two Time Pad, you can gather information on the messages sent.  This concept was used to crack <a href="http://en.wikipedia.org/wiki/Venona_project#Decryption">The Verona Project</a>, MS-CHAP in Windows NT, and the wireless protocol <a href="http://en.wikipedia.org/wiki/Wired_Equivalent_Privacy#Flaws">WEP</a>.</p>
+
+<p>In this somewhat lengthy blogpost, I will demonstrate the insecurity of a Two Time Pad.  You will just need an understanding of XOR.</p>
+
+<!-- more -->
+
+
+<h2>Overview of the One Time Pad</h2>
+
+<p>The mechanics of the OTP are very straight forward.  You have a message <em>m</em> of a certain length and a secret key <em>k</em> of the same length.  To encrypt using the OTP: XOR <em>m</em> and <em>k</em> to get the resulting ciphertext <em>c</em>.  To decrypt: XOR <em>k</em> and <em>c</em> to get the message back.  Witness the power of XOR!</p>
+
+<p>For example:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>ENCRYPT                  DECRYPT                  XOR Truth Table
+</span><span class='line'>m:  0 1 1 0 1 1 1        k:  1 0 1 1 0 1 0        a | b | a XOR b
+</span><span class='line'>k:  1 0 1 1 0 1 0        c:  1 1 0 1 1 0 1        ---------------
+</span><span class='line'>-----------------        -----------------        0 | 0 |   0
+</span><span class='line'>c:  1 1 0 1 1 0 1        m:  0 1 1 0 1 1 1        0 | 1 |   1
+</span><span class='line'>                                                  1 | 0 |   1
+</span><span class='line'>                                                  1 | 1 |   0</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Because nothing is perfectly perfect, there are some drawbacks to using the OTP in the real world:</p>
+
+<ol>
+<li>It requires a key length as large as the message.
+If you wanted to encrypt the contents of a 1000 page book, you would also need another 1000 page book that represents the key.</li>
+<li>The security of the OTP is only as secure as the key exchange.
+ How does one send the key from Alice to Bob so that no one can intercept it?</li>
+<li>Every key must be random, unpredictable and unique, which is a non-trivial software requirement.</li>
+</ol>
+
+
+<h2>The Two Time Pad is Insecure</h2>
+
+<p>A Two Time Pad is when the key <em>k</em> is used more than once.  If an eavesdropper gets a hold of these ciphertexts, information can be obtained.  Take these two ciphertext, <em>c1</em> and <em>c2</em>.  Both encrypt different messages, but use the same key <em>k</em>.</p>
+
+<p><em>c1</em> = <em>m1</em> xor <em>k</em><br/>
+<em>c2</em> = <em>m2</em> xor <em>k</em></p>
+
+<p>If the eavesdropper get these two ciphertext and XORs them together the key <em>k</em> drops out (<em>a</em> xor <em>a</em> = 0), the result is:</p>
+
+<p><em>c1</em> xor <em>c2</em> = <em>m1</em> xor <em>m2</em></p>
+
+<p>What is left if the difference between the two messages.  This can easily be shows with images instead of ones and zeroes.  Here is a screenshot of <a href="https://github.com/xhostplus/ImageXOR">ImageXOR</a> program I wrote:
+<img src="http://xhostpl.us/assets/ImageXOR_screenshot.png" alt="ImageXOR_screenshot" /></p>
+
+<p>From this screenshot you can see both Message 1 and Message 2.  Both are encrypted using the same Key.  Both ciphertexts are shown, along with the difference between the two messages.  You can clearly see that the difference image contains information from both Message 1 and Message 2.  As an eavesdropper, we have obtained the information from both Messages.</p>
+
+<p>Like I stated before, this is easily seen with images, the human brain can see patterns and images easily and we can pick out the images even though they are superimposed.  As a computer, this is a fairly difficult task.  How can we implement this on a computer to actually get the message text?</p>
+
+<h3>Decrypting the Secret Message using the Two Time Pad</h3>
+
+<p>Luckily, the English language has enough redundancy that information can be obtained from a series of Two Time Pad ciphertexts.  More specifically, if we look at the <a href="http://www.asciitable.com/">ASCII Table</a> we can see that if we XOR a lowercase letter with a SPACE, we get the uppercase version of that same letter.  The same holds true for an upper case letter.</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>LETTER   HEX    BINARY
+</span><span class='line'>A:       0x41   0100 0001
+</span><span class='line'>Space:   0x20   0010 0000    XOR
+</span><span class='line'>-------------------------
+</span><span class='line'>a        0x61   0110 0001</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Using the above fact, we can take a few Two Time Pad ciphertexts and try to figure out what the secret messages are.  In the following example, this <a href="http://xhostpl.us/downloads/OTP/secret.txt">secret message</a> needs to be decrypted.  We are given <a href="http://xhostpl.us/downloads/OTP/ciphertexts.txt">ten other ciphertexts</a> that were encrypted using the same key <em>k</em>.</p>
+
+<p>Compiling and running <a href="https://github.com/xhostplus/OneTimePad/tree/master/OTPAttack">this code</a> against the ciphertexts will result in this output:</p>
+
+<figure class='code'><figcaption><span>Partially decoded ciphertexts </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>..E............MG.........._..I...A.......M..p........R........_..Y...........O..E.
+</span><span class='line'>..E.........H...G...........U...G..........E...D..........E...._..._...E....._.....
+</span><span class='line'>..E......Y...S..........H.......K_...N..............V.._.........E...O......N..N...
+</span><span class='line'>.........._...S....I....H....S..G..........E...D..........._..E..........T......C..
+</span><span class='line'>......C.....E.S..._....w..._..I.......E.........._......U.........U_...E...A....C..
+</span><span class='line'>..E....R........G.......H.........A.o....I...........E...S..........M..E.T..._.....
+</span><span class='line'>.H...E...._...S..E...._._.N...I.G.._....t....p....N.....U.._..E............A....C..
+</span><span class='line'>.H........_.........S......_...N..........M...........R......H......M....T.......E.
+</span><span class='line'>..._.........S........_..E..........o......E.......E....U.E............._..........
+</span><span class='line'>.....E..E..M...A...I....H......N..A...._...._...........U...T.......M..E..O.N......</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The code will compare each ciphertext message with every other one trying to determine where the spaces are.  Using the position in the ciphertext we believe to be a space, XOR that with the same position in the secret message.  Using this algorithm, we get the above output.  If we scan each column we can see some repeated characters, some are special characters, the . are non-printable characters and the - is believed to be a space.  From this information, we can try to reconstruct the secret message:</p>
+
+<figure class='code'><figcaption><span>Partially decoded message </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>he  ecre  message is  When using a One Time P d  never use the  ey mo e t an once</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Remember that the capital letters will convert to lower case, and the lowercase characters will convert to uppercase.
+Filling in some of the missing letters we are almost done.</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>The secret message is  When using a One Time Pad  never use the key more than once</span></code></pre></td></tr></table></div></figure>
+
+
+<p>There are a couple of missing characters in this message, after <em>is</em>, after <em>Pad</em> and at the end, after <em>once</em>.  We need to try to determine what the rest of the secret message is.  One way would be to use the secret message and decode the ciphertexts in the file.  We know the secret message and ciphertext, from this we can determine the key and decode the other ciphertexts.</p>
+
+<p><em>m</em> xor <em>c</em> = <em>k</em></p>
+
+<p>Compiling and running <a href="https://github.com/xhostplus/OneTimePad/tree/master/OTPDecode">this code</a> using the same ciphertexts file, we can decode the secret key <em>k</em> and the ciphertexts.  Using the partially decoded message we get this output:</p>
+
+<figure class='code'><figcaption><span>Decoded Key (so far) </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>589C983EA55EF78A1F62970699D3C62E92639AC20A762D7844531FE208926C602E049ED462955E81F7F68890C94EBF5BBD591DBBC64A330A9E52ECA6E45807137CA5E7BE3B4540323BC8C305168260C7DB7E</span></code></pre></td></tr></table></div></figure>
+
+
+
+
+<figure class='code'><figcaption><span>Partially decoded ciphertexts </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>In cryptography, encrcption is the process of enooding messages Or information in .
+</span><span class='line'>In symmetric-key schewes,[3] the encryption and hecryption keys Are the same. Thus.
+</span><span class='line'>In public-key encryptson schemes, the encryption,key is publisheD for anyone to us.
+</span><span class='line'>Encryption has long b.en used by militaries and kovernments to fAcilitate secret c.
+</span><span class='line'>TL;DR; Using a One Tiwe Pad is secure, (perfectlu secure actuallY), but you have t.
+</span><span class='line'>In this somewhat lengnhy blogpost, I will demonsxrate the insecuRity of a Two Time.
+</span><span class='line'>A Two Time Pad is whet the key k is used more thmn once. If an eAvesdropper gets a.
+</span><span class='line'>A publicly available jublic key encryption applioation called PrEtty Good Privacy .
+</span><span class='line'>For technical reasons6 an encryption scheme usua`ly uses a pseudO-random encryptio.
+</span><span class='line'>There is no way for tris person to know that the,message was altEred in it's encry.</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Looking at the decoded ciphertexts, there are some discrepancies which correspond to the missing characters in the partially decoded message.  In the first line of the decrypted ciphertexts, we can see that <em>encrcption</em> should be <em>encryption</em>.  Here is how we can use the information so far to correct this and get the rest of the secret message:</p>
+
+<ol>
+<li>Determine what the corrected key value should be</li>
+<li>Adjust the current key with this corrected value</li>
+<li>Determine the new decrypted value we are looking for</li>
+</ol>
+
+
+<p>For the first discrepancy, we are looking at the 22nd character in the files:</p>
+
+<figure class='code'><figcaption><span>Values for reference </span></figcaption>
+<div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>Partially Decoded Key    = 589C983EA55EF78A1F62970699D3C62E92639AC20A|76|2D7844531F
+</span><span class='line'>Encoded Ciphertext       = 11F2B85DD72787FE7005E567E9BBBF02B206F4A178|15|5D0C2D3C71
+</span><span class='line'>Decoded Ciphertext       = I n   c r y p t o g r a p h y ,   e n c r |c |p t i o n
+</span><span class='line'>Partially Decoded Secret = T h e   s e c r e t   m e s s a g e   i s |  |  W h e n</span></code></pre></td></tr></table></div></figure>
+
+
+<p><strong><em>m</em></strong>   = The secret message value (The partially decoded message.  This will always be a SPACE in this example, since we are using a SPACE as a placeholder.)<br/>
+<strong><em>c</em></strong>   = The encoded ciphertext value (from the file)<br/>
+<strong><em>k</em></strong>   = The decrypted key value (after running the above program)<br/>
+<strong><em>k&#8217;</em></strong>  = The correct key<br/>
+<strong><em>k&#8217;&lsquo;</em></strong> = The adjusted key<br/>
+<strong><em>m&rsquo;</em></strong>  = The correct secret message value<br/>
+<strong><em>m1</em></strong>  = The decoded ciphertext message value<br/>
+<strong><em>m1&#8217;</em></strong> = The corrected decoded ciphertext message value</p>
+
+<p>We know these values so let&rsquo;s set them:</p>
+
+<p><strong><em>m</em></strong>   = 0x20 (SPACE)<br/>
+<strong><em>c</em></strong>   = 0x15<br/>
+<strong><em>k</em></strong>   = 0x76<br/>
+<strong><em>m1</em></strong>  = 0x63 (letter c)<br/>
+<strong><em>m1&#8217;</em></strong> = 0x79 (letter y)</p>
+
+<ol>
+<li><p>Determine the correct key value:<br/>
+We need to find the value of <em>k&#8217;</em> that will give us the correct value, in this case the letter y:<br/>
+<strong><em>c</em> xor <em>k&#8217;</em> = <em>m1&#8217;</em></strong><br/>
+Since XOR is commutative, we can re-write the equation to be:<br/>
+<strong><em>c</em> xor <em>m1&#8217;</em> = <em>k&#8217;</em></strong></p></li>
+<li><p>Because of the malleability of XOR, we can adjust the old key value using the new key value.  This will produce a key value that will decrypt the SPACE character into the correct character in the secret message:<br/>
+ We have the correct key value, but we need to adjust it with the key value we already decrypted:<br/>
+ <strong><em>k&#8217;</em> xor <em>k</em> = <em>k&#8217;&lsquo;</em></strong></p></li>
+<li><p>Decrypt the SPACE value using the new <em>k&ldquo;_ value:<br/>
+ Using this new _k&rdquo;</em> key, we can now compute the corrected letter for the secret message:<br/>
+ <strong><em>k&#8217;&lsquo;</em> xor <em>m</em> = <em>m&rsquo;</em></strong></p></li>
+</ol>
+
+
+<p>Taking these equations and putting in the values we get the following:</p>
+
+<p>0x15 xor <em>k&#8217;</em> = 0x79 (y)<br/>
+0x15 xor 0x79 = <em>k&#8217;</em> = 0x6C<br/>
+0x6C xor 0x76 = 0x1A<br/>
+0x1A xor 0x20(SPACE) = 0x3A (:)</p>
+
+<p>If you are still following&hellip; we just deciphered the missing character in the secret message (:), and found the correct key value for that character (0x62).  Wash, Rinse, Repeat.  Here is the entire secret message:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>The secret message is: When using a stream cipher, never use the key more than once!</span></code></pre></td></tr></table></div></figure>
+
+]]></content>
+  </entry>
   
 </feed>

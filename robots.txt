@@ -1,4 +1,4 @@
 User-agent: *
 Disallow: 
 
-Sitemap: http://xhostplus.github.io/sitemap.xml 
+Sitemap: http://xhostpl.us/sitemap.xml 
